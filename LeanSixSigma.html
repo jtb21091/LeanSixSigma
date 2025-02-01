@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lean Six Sigma Calculator</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@17/umd/react.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        canvas {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <canvas id="bellCurveChart"></canvas>
+    <script type="text/babel">
+        function LeanSixSigmaApp() {
+            const [data, setData] = React.useState({
+                defects: "",
+                opportunities: "",
+                units: ""
+            });
+            const [results, setResults] = React.useState([]);
+
+            const calculateMetrics = () => {
+                const { defects, opportunities, units } = data;
+                if (defects && opportunities && units) {
+                    const totalOpportunities = opportunities * units;
+                    const dpmo = (defects / totalOpportunities) * 1e6;
+                    const yieldRate = 1 - (defects / totalOpportunities);
+                    const sigmaLevel = Math.sqrt(2) * erfinv(yieldRate * 2 - 1) + 1.5;
+
+                    const newEntry = {
+                        defects, opportunities, units,
+                        dpmo: dpmo.toFixed(2),
+                        yield: (yieldRate * 100).toFixed(6),
+                        sigmaLevel: sigmaLevel.toFixed(2)
+                    };
+                    setResults([...results, newEntry]);
+                    updateBellCurve([...results, newEntry]);
+                }
+            };
+
+            const updateBellCurve = (results) => {
+                const ctx = document.getElementById("bellCurveChart").getContext("2d");
+                const stdDev = 1;
+                const mean = 0;
+                const xValues = [];
+                const yValues = [];
+                for (let i = -10; i <= 10; i += 0.1) {
+                    xValues.push(i);
+                    yValues.push(Math.exp(-0.5 * Math.pow((i - mean) / stdDev, 2)) / (stdDev * Math.sqrt(2 * Math.PI)));
+                }
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: xValues,
+                        datasets: [{
+                            label: 'Bell Curve',
+                            data: yValues,
+                            borderColor: 'red',
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        },
+                        plugins: {
+                            annotation: {
+                                annotations: results.map(entry => ({
+                                    type: 'line', mode: 'vertical', scaleID: 'x', value: parseFloat(entry.sigmaLevel),
+                                    borderColor: 'blue', borderWidth: 2,
+                                    label: { content: `${entry.sigmaLevel}σ`, enabled: true }
+                                }))
+                            }
+                        }
+                    }
+                });
+            };
+
+            function erfinv(x) {
+                let a = 0.147;
+                let ln1 = Math.log(1 - x * x);
+                let term1 = (2 / (Math.PI * a)) + ln1 / 2;
+                let term2 = ln1 / a;
+                return Math.sign(x) * Math.sqrt(Math.sqrt(term1 * term1 - term2) - term1);
+            }
+
+            return (
+                <div>
+                    <h2>Lean Six Sigma Calculator</h2>
+                    <input type="number" placeholder="Defects" value={data.defects} onChange={(e) => setData({ ...data, defects: e.target.value })} />
+                    <input type="number" placeholder="Opportunities per Unit" value={data.opportunities} onChange={(e) => setData({ ...data, opportunities: e.target.value })} />
+                    <input type="number" placeholder="Number of Units" value={data.units} onChange={(e) => setData({ ...data, units: e.target.value })} />
+                    <button onClick={calculateMetrics}>Calculate</button>
+                    {results.length > 0 && (
+                        <div>
+                            <h3>Results</h3>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Defects</th>
+                                        <th>Opportunities per Unit</th>
+                                        <th>Units</th>
+                                        <th>DPMO</th>
+                                        <th>Yield (%)</th>
+                                        <th>Sigma Level</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {results.map((entry, index) => (
+                                        <tr key={index}>
+                                            <td>{entry.defects}</td>
+                                            <td>{entry.opportunities}</td>
+                                            <td>{entry.units}</td>
+                                            <td>{entry.dpmo}</td>
+                                            <td>{entry.yield}</td>
+                                            <td>{entry.sigmaLevel}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            <button>
+                                <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(['Defects,Opportunities per Unit,Units,DPMO,Yield (%),Sigma Level', ...results.map(e => Object.values(e).join(","))].join("\n"))}`} download="lean_six_sigma_results.csv">Download CSV</a>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        ReactDOM.render(<LeanSixSigmaApp />, document.getElementById("root"));
+    </script>
+</body>
+</html>
